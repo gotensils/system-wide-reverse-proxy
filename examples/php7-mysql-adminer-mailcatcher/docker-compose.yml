@@ -1,0 +1,72 @@
+
+version: "3"
+
+# /etc/hosts entries required:
+#   example.local
+#   www.example.local
+#   db.example.local
+#   www.db.example.local
+#   mails.example.local
+#   www.mails.example.local
+
+networks:
+  default: # projects default internal network. every project-container should be in here
+  traefik: # only "public" containers which are reachable from outside of the private network should be in here
+    external: true
+
+volumes:
+  database:
+
+services:
+
+  app:
+    image: php:7
+    # TODO: add send smtp/mail over :1025 (mailcatcher) exmaple
+    command: sh -c 'echo "<?php phpinfo(); ?>" > index.php; php -S 0.0.0.0:80 -t . index.php'
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.example--app.rule=Host(`example.local`) || Host(`www.example.local`)
+      - traefik.http.routers.example--app.service=example--app
+      - traefik.http.services.example--app.loadbalancer.server.port=80
+
+  adminer:
+    image: adminer
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.example--adminer.rule=Host(`db.example.local`) || Host(`www.db.example.local`)
+      - traefik.http.routers.example--adminer.service=example--adminer
+      - traefik.http.services.example--adminer.loadbalancer.server.port=8080
+
+  database:
+    image: mariadb
+    environment:
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_DATABASE: example
+      MYSQL_RANDOM_ROOT_PASSWORD: "true"
+    networks:
+      - default # no traefik network!
+    volumes:
+      - database:/var/lib/mysql
+    labels:
+      - traefik.enable=false
+
+  mailcatcher:
+    image: dockage/mailcatcher
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.example--mailcatcher.rule=Host(`mails.example.local`) || Host(`www.mails.example.local`)
+      - traefik.http.routers.example--mailcatcher.service=example--mailcatcher
+      - traefik.http.services.example--mailcatcher.loadbalancer.server.port=1080

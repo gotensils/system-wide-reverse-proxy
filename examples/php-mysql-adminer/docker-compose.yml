@@ -1,0 +1,58 @@
+
+version: "3"
+
+# Add to /etc/hosts:
+# 127.0.0.1  example.local www.example.local db.example.local www.db.example.local
+
+networks:
+  default: # every container needs this network
+  traefik: # only containers supposed to be publicly reachable for everyone need this network
+    external: true
+
+volumes:
+  database:
+
+services:
+
+  app:
+    build: .
+    env_file:
+      - .env
+      - .env.local
+    networks:
+      - default
+      - traefik
+    volumes:
+      - ./index.php:/usr/src/app/index.php
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.php-mysql-adminer--app.rule=Host(`example.local`) || Host(`www.example.local`)
+      - traefik.http.routers.php-mysql-adminer--app.service=php-mysql-adminer--app
+      - traefik.http.services.php-mysql-adminer--app.loadbalancer.server.port=80
+
+  database:
+    image: mariadb
+    env_file:
+      - .env
+      - .env.local
+    networks:
+      - default
+      # - traefik # private
+    volumes:
+      - database:/var/lib/mysql
+      - ./dump.sql:/docker-entrypoint-initdb.d/dump.sql
+    labels:
+      - traefik.enable=false
+
+  adminer:
+    image: adminer
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.php-mysql-adminer--adminer.rule=Host(`db.example.local`) || Host(`www.db.example.local`)
+      - traefik.http.routers.php-mysql-adminer--adminer.service=php-mysql-adminer--adminer
+      - traefik.http.services.php-mysql-adminer--adminer.loadbalancer.server.port=8080
